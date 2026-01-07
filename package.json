@@ -1,0 +1,24 @@
+{
+  "name": "qaautomationlabs",
+  "version": "1.0.0",
+  "description": "",
+  "license": "ISC",
+  "author": "",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "headed": "echo \"npx cypress run --headed",
+    "headless": "npx cypress run --headless",
+    "open": "npx cypress open",
+    "test:allure": "npx cypress run",
+  "generate:allure": "allure generate allure-results --clean -o allure-report",
+  "open:allure": "allure open allure-report",
+  "report": "npm run test:allure && npm run generate:allure && npm run open:allure"
+  },
+  "devDependencies": {
+    "allure-commandline": "^2.36.0",
+    "allure-cypress": "^2.15.1",
+    "cypress": "^15.8.1"
+  }
+}
