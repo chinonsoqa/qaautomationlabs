@@ -7,7 +7,7 @@
   "type": "commonjs",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "npx cypress run",
     "headed": "echo \"npx cypress run --headed",
     "headless": "npx cypress run --headless",
     "open": "npx cypress open",
