@@ -17,21 +17,17 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-          cache: 'npm'   # ✅ speeds up installs
+          cache: 'npm'   # ✅ enables npm caching
 
       - name: Run Cypress tests
         uses: cypress-io/github-action@v6
         with:
           install: true
           runTests: true
-          record: true                # ✅ record results to Cypress Dashboard
-          parallel: true              # ✅ optional: run tests in parallel
-        env:
-          CYPRESS_RECORD_KEY: ${{ secrets.CYPRESS_RECORD_KEY }}
 
       # ✅ Save Cypress test results (screenshots/videos) as artifacts
       - name: Upload Cypress screenshots
-        if: failure()
+        if: failure()   # only upload if tests fail
         uses: actions/upload-artifact@v4
         with:
           name: cypress-screenshots
