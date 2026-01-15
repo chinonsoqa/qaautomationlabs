@@ -1,52 +1,56 @@
 class CartPage {
+  selectors = {
+    cartRows: '#cartTable tbody tr',
+    productCell: 'td.align-left',
+    qtyInput: 'input.qty',
+    removeBtn: 'button.remove',
+    cartIcon: '#cartdesk > i.fas',  // Added for openCart
+    backToShopBtn: '.col-md-2 > .btn',  // Added for backToShopping
+  };
+
   openCart() {
-    cy.get('#cartdesk > i.fas').click(); // Assuming the cart icon has this class
-  }
-
-  CartItem(expectedItems, expectedQuantities) {
-    // Verify the number of items in the cart
-    cy.get('#cartTable tbody tr').should('have.length', expectedItems);
-
-    // Verify the quantity for each item
-    cy.get('#cartTable tbody tr').each(($row, index) => {
-      cy.wrap($row).find('td.align-middle input.qty').should('have.value', expectedQuantities[index]);
-    });
-  }
-
-  CartItemRemoval(expectedItemsAfterRemoval, expectedQuantitiesAfterRemoval) {
-    // Remove the first item from the cart
-    cy.get(':nth-child(1) > :nth-child(5) > .btn > .fa').click();
-    
-    // Verify the number of items in the cart after removal
-    cy.get('#cartTable tbody tr').should('have.length', expectedItemsAfterRemoval);
-
-    // Verify the quantity after removal for each item
-    cy.get('#cartTable tbody tr').each(($row, index) => {
-      cy.wrap($row).find('td.align-middle input.qty').should('have.value', expectedQuantitiesAfterRemoval[index]);
-    });
+    cy.get(this.selectors.cartIcon).click();
   }
 
   backToShopping() {
-    cy.get('.col-md-2 > .btn').click(); // Click on "Back to Shop" button
+    cy.get(this.selectors.backToShopBtn).click();
   }
 
-  CartItemUpdate(expectedCartItemsAfterUpdate, expectedCartQuantitiesAfterUpdate) {
-    // Update the quantity for each item in the cart
-    cy.get('#cartTable tbody tr').each(($row, index) => {
-      cy.wrap($row).find('tr > td.align-middle > input.qty').clear().type(expectedCartQuantitiesAfterUpdate[index]).blur();
-    });
-
-    // Verify the number of items in the cart after update
-    cy.get('#cartTable tbody tr').should('have.length', expectedCartItemsAfterUpdate);
-
-    // Verify the quantity for each item after update
-    cy.get('#cartTable tbody tr').each(($row, index) => {
-      cy.wrap($row).find('td.align-middle input.qty').should('have.value', expectedCartQuantitiesAfterUpdate[index]);
-    });
+  removeItemByName(productName) {
+    cy.get(this.selectors.cartRows)
+      .contains(this.selectors.productCell, productName)
+      .parents('tr')
+      .find(this.selectors.removeBtn)
+      .click();
   }
 
+  updateQtyByName(productName, qty) {
+    cy.get(this.selectors.cartRows)
+      .contains(this.selectors.productCell, productName)
+      .parents('tr')
+      .find(this.selectors.qtyInput)
+      .clear()
+      .type(`${qty}`)
+      .blur();
+  }
 
-  
+  assertCartItemsCount(expectedCount) {
+    cy.get(this.selectors.cartRows).should('have.length', expectedCount);
+  }
+
+  assertQtyByName(productName, expectedQty) {
+    cy.get(this.selectors.cartRows)
+      .contains(this.selectors.productCell, productName)
+      .parents('tr')
+      .find(this.selectors.qtyInput)
+      .should('have.value', `${expectedQty}`);
+  }
+
+  updateMultipleQtyByName(qtyMap) {
+    Object.entries(qtyMap).forEach(([name, qty]) => {
+      this.updateQtyByName(name, qty);
+    });
+  }
 }
 
 export default CartPage;

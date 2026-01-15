@@ -1,7 +1,7 @@
 import LoginPage from "../pageObjects/loginPage";
 import ShopPage from "../pageObjects/shopPage";
 import CartPage from "../pageObjects/cartPage";
-import KidsWearPage  from "../pageObjects/kidsWearPage";
+import KidsWearPage from "../pageObjects/kidsWearPage";
 
 //describe('testing the URL', {browser: 'chrome'},() => {  //Browser specific defined
 describe('shopping', () => {
@@ -38,33 +38,51 @@ beforeEach(function () {
   })
 
 it('should display cart items', function () {
-  cartPage.CartItem(this.data.expectedCartItems, this.data.expectedCartQuantities);
+  // Assert item count
+  cartPage.assertCartItemsCount(this.data.expectedCartItems);
+  
+  // Assert quantities by name
+  this.data.initialCartItems.forEach(item => {
+    cartPage.assertQtyByName(item.name, item.qty);
+  });
 })
 
 it('should remove item from cart', function () {
+  // Remove item by name
+  cartPage.removeItemByName(this.data.removeProductName);
   
-  // Verify the cart now has one less item
-  cartPage.CartItemRemoval(this.data.expectedCartItemsAfterRemoval, this.data.expectedCartQuantitiesAfterRemoval);
+  // Assert updated item count
+  cartPage.assertCartItemsCount(this.data.expectedCartItemsAfterRemoval);
+  
+  // Assert quantity of remaining item
+  cartPage.assertQtyByName(this.data.remainingItemAfterRemoval.name, this.data.remainingItemAfterRemoval.qty);
 });
 
 it.only('should update item quantity in cart with kids items after removing item from cart', function () {
   // Remove an item from cart
-  cartPage.CartItemRemoval(this.data.expectedCartItemsAfterRemoval, this.data.expectedCartQuantitiesAfterRemoval);
+  cartPage.removeItemByName(this.data.removeProductName);
+  cartPage.assertCartItemsCount(this.data.expectedCartItemsAfterRemoval);
 
   // Go back to shopping
   cartPage.backToShopping();
 
   // Add kids items
   kidsWearPage.clickKidsWearBtn(this.data.clickKidsWearBtn);
-  kidsWearPage.clickCorksForKids(this.data.crocksForKids);
+  kidsWearPage.clickCroksForKids(this.data.crocksForKids); 
   kidsWearPage.clickSkirtandTopForKids(this.data.skirtandTopForKids);
 
   // Open cart
   cartPage.openCart();
 
-  // Update quantity and verify
-  cartPage.CartItemUpdate(this.data.expectedCartItemsAfterUpdate, this.data.expectedCartQuantitiesAfterUpdate);
+  // Update quantities by name
+  cartPage.updateMultipleQtyByName(this.data.cartQtyByNameAfterUpdate);
+  
+  // Assert updated item count
+  cartPage.assertCartItemsCount(this.data.expectedCartItemsAfterUpdate);
+  
+  // Assert updated quantities by name
+  Object.entries(this.data.cartQtyByNameAfterUpdate).forEach(([name, qty]) => {
+    cartPage.assertQtyByName(name, qty);
+  });
 });
-
-
 });

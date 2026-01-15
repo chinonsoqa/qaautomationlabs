@@ -43,7 +43,7 @@ it('select kids wear from dropdown', function () {
 
 it('should add crocks for kids to the cart', function () {
     kidsWearPage.clickKidsWearBtn(this.data.clickKidsWearBtn);
-    kidsWearPage.clickCorksForKids(this.data.crocksForKids);
+    kidsWearPage.clickCroksForKids(this.data.crocksForKids);
 
      //Verify cart item count and exact product
     cy.get('#cartCount').should('have.text', '1');

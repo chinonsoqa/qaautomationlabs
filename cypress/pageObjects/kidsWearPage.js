@@ -6,7 +6,7 @@ class KidsWearPage {
   }
 
   // Click on Crocks item
-  clickCorksForKids(selector) {
+  clickCroksForKids(selector) {
     cy.get(selector).as('crocksForKids');
     cy.wait(2000); // wait for 2 sec
     cy.get(selector).first().click();

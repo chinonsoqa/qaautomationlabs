@@ -11,8 +11,20 @@
   "skirtandTopForKids": ":nth-child(2) > .product-item > .text-center > .btn",
   "expectedCartItems": 2,
   "expectedCartQuantities": ["1", "1"],
+  
+  "initialCartItems": [
+    {"name": "Green Pant", "qty": "1"},
+    {"name": "Blue Sport Shoes", "qty": "1"}
+  ],
   "expectedCartItemsAfterRemoval": 1,
   "expectedCartQuantitiesAfterRemoval": ["1"],
+  "remainingItemAfterRemoval": {"name": "Blue Sport Shoes", "qty": "1"},
   "expectedCartItemsAfterUpdate": 3,
-  "expectedCartQuantitiesAfterUpdate": ["1", "2", "1"]
+  "expectedCartQuantitiesAfterUpdate": ["1", "2", "1"],
+  "cartQtyByNameAfterUpdate": {
+    "Blue Sport Shoes": "1",
+    "Crocks": "2",
+    "Skirt & Top": "1"
+  },
+  "removeProductName": "Green Pant"
 }
