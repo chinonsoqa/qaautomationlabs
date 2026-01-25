@@ -11,6 +11,7 @@ module.exports = defineConfig({
   //viewportWidth: 1280, // Set the width of the viewport for the tests
  // viewportHeight: 720, // Set the height of the viewport for the tests
   e2e: {
+    experimentalPromptCommand: true, // To enable the experimental prompt commands feature
     setupNodeEvents(on, config) {
       // implement node event listeners here
        allureCypress(on, config, {
@@ -26,5 +27,8 @@ module.exports = defineConfig({
     video: true
     
     },
+
+    projectId: "4usmfv" //Cypress Cloud Project ID
+    
 
 });

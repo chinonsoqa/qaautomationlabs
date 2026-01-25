@@ -26,9 +26,6 @@ beforeEach(function () {
       shopPage.clickMenFashionBtn(this.data.clickMenFashionBtn);
       shopPage.clickGreenPant(this.data.getGreenPant);
       shopPage.clickBlueSportsShoes(this.data.blueSportsShoes);
-      // kidsWearPage.clickKidsWearBtn(this.data.clickKidsWearBtn);
-      // kidsWearPage.clickCrocksForKids(this.data.crocksForKids);
-      // kidsWearPage.clickSkirtandTopForKids(this.data.skirtandTopForKids);
 
     // Open the cart before each cart test
       cartPage.openCart();  
@@ -58,7 +55,7 @@ it('should remove item from cart', function () {
   cartPage.assertQtyByName(this.data.remainingItemAfterRemoval.name, this.data.remainingItemAfterRemoval.qty);
 });
 
-it.only('should update item quantity in cart with kids items after removing item from cart', function () {
+it('should update item quantity in cart with kids items after removing item from cart', function () {
   // Remove an item from cart
   cartPage.removeItemByName(this.data.removeProductName);
   cartPage.assertCartItemsCount(this.data.expectedCartItemsAfterRemoval);
@@ -85,4 +82,13 @@ it.only('should update item quantity in cart with kids items after removing item
     cartPage.assertQtyByName(name, qty);
   });
 });
+
+it('should proceed to checkout from cart', function () {
+  // Proceed to checkout
+  cartPage.clickCheckoutBtn();
+
+
+});
+
+
 });

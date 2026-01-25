@@ -6,6 +6,8 @@ class CartPage {
     removeBtn: 'button.remove',
     cartIcon: '#cartdesk > i.fas',  // Added for openCart
     backToShopBtn: '.col-md-2 > .btn',  // Added for backToShopping
+    checkoutBtn: '#checkoutBtn'  // Added for clickCheckoutBtn
+
   };
 
   openCart() {
@@ -50,7 +52,13 @@ class CartPage {
     Object.entries(qtyMap).forEach(([name, qty]) => {
       this.updateQtyByName(name, qty);
     });
+    
+  };
+
+  clickCheckoutBtn() {
+    cy.get(this.selectors.checkoutBtn).click();
   }
 }
+
 
 export default CartPage;
