@@ -6,11 +6,33 @@ on:
       - github-actions
 
   schedule:
-    - cron: '0 */5 * * *' # every 5 hours
+    # Runs every 5 hours
+    - cron: "0 */5 * * *"
+
+  # Optional: allow manual runs from Actions tab
+  workflow_dispatch:
+
+concurrency:
+  # Prevent overlapping runs on same workflow/branch
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   end-to-end-tests:
     runs-on: ubuntu-latest
+
+    # ✅ Best practice: stop runaway runs before GitHub’s default 6h cancellation
+    timeout-minutes: 90
+
+    env:
+      # ✅ CI-safe + faster installs
+      CI: "true"
+
+      # ✅ Cypress timeouts to avoid hanging forever
+      CYPRESS_defaultCommandTimeout: "10000"
+      CYPRESS_pageLoadTimeout: "60000"
+      CYPRESS_requestTimeout: "15000"
+      CYPRESS_responseTimeout: "30000"
 
     steps:
       - name: Checkout repository
@@ -68,18 +90,25 @@ jobs:
             --reporter-options configFile=reporter-config.json
 
       # -------------------------------
-      # Generate pretty HTML report
+      # Generate pretty HTML report (SAFE)
+      # Skips gracefully if Cypress was cancelled/failed before producing JSON
       # -------------------------------
-      - name: Generate Mochawesome HTML report
+      - name: Generate Mochawesome HTML report (safe)
         if: always()
         run: |
-          npx mochawesome-merge reports/mochawesome/*.json > reports/mochawesome/merged.json
-          npx marge reports/mochawesome/merged.json \
-            --reportDir reports/mochawesome \
-            --reportFilename mochawesome.html
+          if ls reports/mochawesome/*.json 1> /dev/null 2>&1; then
+            echo "Mochawesome JSON found. Generating HTML report..."
+            npx mochawesome-merge reports/mochawesome/*.json > reports/mochawesome/merged.json
+            npx marge reports/mochawesome/merged.json \
+              --reportDir reports/mochawesome \
+              --reportFilename mochawesome.html
+          else
+            echo "No Mochawesome JSON files found. Skipping HTML report generation."
+          fi
 
       # -------------------------------
-      # Build JUnit summary
+      # Build JUnit summary (SAFE)
+      # Works even if no XML exists (sets a helpful summary)
       # -------------------------------
       - name: Build JUnit test summary
         if: always()
@@ -121,8 +150,9 @@ jobs:
           const failed = failures + errors;
           const passed = Math.max(0, total - failed - skipped);
 
-          const summary =
-            `Total: ${total} | Passed: ${passed} | Failed: ${failed} (Failures: ${failures}, Errors: ${errors}) | Skipped: ${skipped} | Duration: ${time.toFixed(2)}s`;
+          const summary = files.length
+            ? `Total: ${total} | Passed: ${passed} | Failed: ${failed} (Failures: ${failures}, Errors: ${errors}) | Skipped: ${skipped} | Duration: ${time.toFixed(2)}s`
+            : `No JUnit XML found (run may have been cancelled or reporter not produced).`;
 
           fs.appendFileSync(process.env.GITHUB_ENV, [
             `TEST_TOTAL=${total}`,
@@ -137,14 +167,16 @@ jobs:
           NODE
 
       # -------------------------------
-      # Upload artifacts
+      # Upload artifacts (best practice)
+      # Always upload reports; screenshots/videos on failure only
       # -------------------------------
-      - name: Upload Test Reports
+      - name: Upload Test Reports (JUnit + Mochawesome)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-reports
           path: reports
+          if-no-files-found: warn
 
       - name: Upload Cypress screenshots
         if: failure()
@@ -152,6 +184,7 @@ jobs:
         with:
           name: cypress-screenshots
           path: cypress/screenshots
+          if-no-files-found: warn
 
       - name: Upload Cypress videos
         if: failure()
@@ -159,20 +192,24 @@ jobs:
         with:
           name: cypress-videos
           path: cypress/videos
+          if-no-files-found: warn
 
       # -------------------------------
-      # Zip reports for email
+      # Zip reports for email (email-size safe)
+      # Never attach screenshots/videos to email (prevents Gmail 25MB failures)
       # -------------------------------
-      - name: Zip reports
+      - name: Zip reports for email
         if: always()
         run: |
           zip -r reports.zip reports || true
 
       # ===============================
       # EMAIL NOTIFICATIONS
+      # Success: attach reports.zip only
+      # Failure: attach reports.zip only + point to artifacts in run
       # ===============================
 
-      - name: Send SUCCESS email
+      - name: Send SUCCESS email (reports attached)
         if: success()
         uses: dawidd6/action-send-mail@v3
         with:
@@ -182,13 +219,14 @@ jobs:
           password: ${{ secrets.SMTP_PASSWORD }}
           to: nwosuchinonso.chinedu@gmail.com, email4automatedtesting@gmail.com
           from: GitHub Actions <${{ secrets.SMTP_USERNAME }}>
-          subject: "✅ Cypress PASSED | ${{ github.repository }}"
+          subject: "✅ Cypress PASSED | ${{ github.repository }} | ${{ github.ref_name }}"
           body: |
             ✅ Cypress E2E Tests PASSED
 
             Summary:
             ${{ env.TEST_SUMMARY }}
 
+            Repo:    ${{ github.repository }}
             Branch:  ${{ github.ref_name }}
             Trigger: ${{ github.event_name }}
 
@@ -197,9 +235,12 @@ jobs:
 
             Run link:
             ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            Reports artifact (download from run page):
+            - test-reports
           attachments: reports.zip
 
-      - name: Send FAILURE email
+      - name: Send FAILURE email (reports attached + artifact links)
         if: failure()
         uses: dawidd6/action-send-mail@v3
         with:
@@ -209,33 +250,35 @@ jobs:
           password: ${{ secrets.SMTP_PASSWORD }}
           to: nwosuchinonso.chinedu@gmail.com, email4automatedtesting@gmail.com
           from: GitHub Actions <${{ secrets.SMTP_USERNAME }}>
-          subject: "❌ Cypress FAILED | ${{ github.repository }}"
+          subject: "❌ Cypress FAILED | ${{ github.repository }} | ${{ github.ref_name }}"
           body: |
             ❌ Cypress E2E Tests FAILED
 
             Summary:
             ${{ env.TEST_SUMMARY }}
 
+            Repo:    ${{ github.repository }}
             Branch:  ${{ github.ref_name }}
             Trigger: ${{ github.event_name }}
 
             Attached:
             - reports.zip (JUnit XML + Mochawesome HTML)
 
-            Artifacts available in the run:
-            - test-reports
-            - cypress-screenshots
-            - cypress-videos
-
             Run link:
             ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            Artifacts available in the run page:
+            - test-reports
+            - cypress-screenshots (failure only)
+            - cypress-videos (failure only)
           attachments: reports.zip
 
       # ===============================
-      # SLACK / TEAMS (INACTIVE)
+      # SLACK / TEAMS (INACTIVE FOR NOW)
+      # Uncomment when ready and add SLACK_WEBHOOK_URL / TEAMS_WEBHOOK_URL secrets.
       # ===============================
 
-      # - name: Slack alert
+      # - name: Slack alert (inactive)
       #   if: always()
       #   uses: slackapi/slack-github-action@v2.0.0
       #   with:
@@ -243,12 +286,12 @@ jobs:
       #     webhook-type: incoming-webhook
       #     payload: |
       #       {
-      #         "text": "Cypress run *${{ job.status }}* for *${{ github.repository }}* on branch *${{ github.ref_name }}*"
+      #         "text": "Cypress run *${{ job.status }}* for *${{ github.repository }}* on branch *${{ github.ref_name }}*.\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
       #       }
 
-      # - name: Teams alert
+      # - name: Teams alert (inactive)
       #   if: always()
       #   run: |
       #     curl -H "Content-Type: application/json" -d '{
-      #       "text": "Cypress run '${{ job.status }}' for '${{ github.repository }}'"
+      #       "text": "Cypress run \"${{ job.status }}\" for \"${{ github.repository }}\" on branch \"${{ github.ref_name }}\".\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
       #     }' "${{ secrets.TEAMS_WEBHOOK_URL }}"
