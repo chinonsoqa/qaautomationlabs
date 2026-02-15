@@ -17,6 +17,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: write
+
 jobs:
   end-to-end-tests:
     runs-on: ubuntu-latest
@@ -113,12 +116,33 @@ jobs:
             echo "No Mochawesome JSON files found. Skipping HTML report generation."
           fi
 
+      - name: Setup Java for Allure
+        if: always()
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install Allure CLI
+        if: always()
+        run: npm install -g allure-commandline
+
+      - name: Fetch Allure history from gh-pages
+        if: always()
+        run: |
+          git fetch origin gh-pages --depth=1 || true
+          if git rev-parse --verify origin/gh-pages > /dev/null 2>&1; then
+            git checkout origin/gh-pages -- history/ 2>/dev/null && mv history allure-results/history || echo "No previous history found."
+          else
+            echo "gh-pages branch does not exist yet. Skipping history fetch."
+          fi
+
       - name: Generate Allure report
         if: always()
         run: |
           if ls allure-results/*.json 1> /dev/null 2>&1; then
             echo "Allure results found. Generating report..."
-            npx allure generate allure-results --clean -o allure-report
+            allure generate allure-results --clean -o allure-report
           else
             echo "No Allure results found. Skipping report generation."
           fi
@@ -219,6 +243,18 @@ jobs:
           if-no-files-found: ignore
 
       # ===============================
+      # DEPLOY ALLURE REPORT TO GITHUB PAGES
+      # ===============================
+      - name: Deploy Allure report to GitHub Pages
+        if: always()
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: allure-report
+          publish_branch: gh-pages
+          keep_files: false
+
+      # ===============================
       # EMAIL NOTIFICATIONS
       # ===============================
       - name: Send SUCCESS email
@@ -244,6 +280,9 @@ jobs:
 
             Run link:
             ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            Allure Report:
+            https://chinonsoqa.github.io/qaautomationlabs/
 
             Download reports from the Artifacts section on the run page:
             - test-reports (JUnit XML + Mochawesome HTML)
@@ -273,6 +312,9 @@ jobs:
 
             Run link:
             ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            Allure Report:
+            https://chinonsoqa.github.io/qaautomationlabs/
 
             Download reports from the Artifacts section on the run page:
             - test-reports (JUnit XML + Mochawesome HTML)
