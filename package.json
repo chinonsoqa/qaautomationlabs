@@ -16,6 +16,7 @@
   "main": "index.js",
   "scripts": {
     "test": "npx cypress run",
+    "test2": "npm run generate:allure && npm run open:allure",
     "headed": "echo \"npx cypress run --headed",
     "headless": "npx cypress run --headless",
     "open": "npx cypress open",
