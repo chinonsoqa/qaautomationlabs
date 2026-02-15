@@ -9,7 +9,7 @@ on:
     # Runs every 5 hours
     - cron: "0 */5 * * *"
 
-  # Optional: allow manual runs from Actions tab
+  # Allow manual runs from Actions tab
   workflow_dispatch:
 
 concurrency:
@@ -20,15 +20,10 @@ concurrency:
 jobs:
   end-to-end-tests:
     runs-on: ubuntu-latest
-
-    # ✅ Best practice: stop runaway runs before GitHub’s default 6h cancellation
     timeout-minutes: 90
 
     env:
-      # ✅ CI-safe + faster installs
       CI: "true"
-
-      # ✅ Cypress timeouts to avoid hanging forever
       CYPRESS_defaultCommandTimeout: "10000"
       CYPRESS_pageLoadTimeout: "60000"
       CYPRESS_requestTimeout: "15000"
@@ -41,16 +36,29 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "18"
+          node-version: "20"
           cache: "npm"
+
+      # Cache the Cypress binary separately from npm packages
+      - name: Cache Cypress binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/Cypress
+          key: cypress-binary-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            cypress-binary-${{ runner.os }}-
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Verify Cypress binary
+        run: npx cypress verify
 
       - name: Create output folders
         run: |
           mkdir -p reports/junit
           mkdir -p reports/mochawesome
+          mkdir -p allure-results
           mkdir -p cypress/screenshots
           mkdir -p cypress/videos
 
@@ -79,21 +87,20 @@ jobs:
       # -------------------------------
       # Run Cypress once
       # -------------------------------
-      - name: Run Cypress tests (JUnit + Mochawesome)
+      - name: Run Cypress tests
+        id: cypress
         uses: cypress-io/github-action@v6
         with:
           install: false
-          runTests: true
           command: >
             npx cypress run
             --reporter cypress-multi-reporters
             --reporter-options configFile=reporter-config.json
 
       # -------------------------------
-      # Generate pretty HTML report (SAFE)
-      # Skips gracefully if Cypress was cancelled/failed before producing JSON
+      # Generate reports (always run even if tests fail)
       # -------------------------------
-      - name: Generate Mochawesome HTML report (safe)
+      - name: Generate Mochawesome HTML report
         if: always()
         run: |
           if ls reports/mochawesome/*.json 1> /dev/null 2>&1; then
@@ -106,10 +113,16 @@ jobs:
             echo "No Mochawesome JSON files found. Skipping HTML report generation."
           fi
 
-      # -------------------------------
-      # Build JUnit summary (SAFE)
-      # Works even if no XML exists (sets a helpful summary)
-      # -------------------------------
+      - name: Generate Allure report
+        if: always()
+        run: |
+          if ls allure-results/*.json 1> /dev/null 2>&1; then
+            echo "Allure results found. Generating report..."
+            npx allure generate allure-results --clean -o allure-report
+          else
+            echo "No Allure results found. Skipping report generation."
+          fi
+
       - name: Build JUnit test summary
         if: always()
         run: |
@@ -167,8 +180,7 @@ jobs:
           NODE
 
       # -------------------------------
-      # Upload artifacts (best practice)
-      # Always upload reports; screenshots/videos on failure only
+      # Upload artifacts
       # -------------------------------
       - name: Upload Test Reports (JUnit + Mochawesome)
         if: always()
@@ -176,27 +188,38 @@ jobs:
         with:
           name: test-reports
           path: reports
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Upload Allure Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-report
+          path: allure-report
+          retention-days: 30
           if-no-files-found: warn
 
       - name: Upload Cypress screenshots
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: cypress-screenshots
           path: cypress/screenshots
-          if-no-files-found: warn
+          retention-days: 14
+          if-no-files-found: ignore
 
       - name: Upload Cypress videos
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: cypress-videos
           path: cypress/videos
-          if-no-files-found: warn
+          retention-days: 14
+          if-no-files-found: ignore
 
       # -------------------------------
-      # Zip reports for email (email-size safe)
-      # Never attach screenshots/videos to email (prevents Gmail 25MB failures)
+      # Zip reports for email
       # -------------------------------
       - name: Zip reports for email
         if: always()
@@ -205,12 +228,9 @@ jobs:
 
       # ===============================
       # EMAIL NOTIFICATIONS
-      # Success: attach reports.zip only
-      # Failure: attach reports.zip only + point to artifacts in run
       # ===============================
-
-      - name: Send SUCCESS email (reports attached)
-        if: success()
+      - name: Send SUCCESS email
+        if: ${{ always() && steps.cypress.outcome == 'success' }}
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: ${{ secrets.SMTP_SERVER }}
@@ -238,10 +258,11 @@ jobs:
 
             Reports artifact (download from run page):
             - test-reports
+            - allure-report
           attachments: reports.zip
 
-      - name: Send FAILURE email (reports attached + artifact links)
-        if: failure()
+      - name: Send FAILURE email
+        if: ${{ always() && steps.cypress.outcome == 'failure' }}
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: ${{ secrets.SMTP_SERVER }}
@@ -269,8 +290,9 @@ jobs:
 
             Artifacts available in the run page:
             - test-reports
-            - cypress-screenshots (failure only)
-            - cypress-videos (failure only)
+            - allure-report
+            - cypress-screenshots
+            - cypress-videos
           attachments: reports.zip
 
       # ===============================
