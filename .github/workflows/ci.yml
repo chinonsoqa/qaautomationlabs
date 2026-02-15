@@ -218,14 +218,6 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
-      # -------------------------------
-      # Zip reports for email
-      # -------------------------------
-      - name: Zip reports for email
-        if: always()
-        run: |
-          zip -r reports.zip reports || true
-
       # ===============================
       # EMAIL NOTIFICATIONS
       # ===============================
@@ -239,9 +231,9 @@ jobs:
           password: ${{ secrets.SMTP_PASSWORD }}
           to: nwosuchinonso.chinedu@gmail.com, email4automatedtesting@gmail.com
           from: GitHub Actions <${{ secrets.SMTP_USERNAME }}>
-          subject: "✅ Cypress PASSED | ${{ github.repository }} | ${{ github.ref_name }}"
+          subject: "Cypress PASSED | ${{ github.repository }} | ${{ github.ref_name }}"
           body: |
-            ✅ Cypress E2E Tests PASSED
+            Cypress E2E Tests PASSED
 
             Summary:
             ${{ env.TEST_SUMMARY }}
@@ -250,16 +242,13 @@ jobs:
             Branch:  ${{ github.ref_name }}
             Trigger: ${{ github.event_name }}
 
-            Attached:
-            - reports.zip (JUnit XML + Mochawesome HTML)
-
             Run link:
             ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
-            Reports artifact (download from run page):
-            - test-reports
+            Download reports from the Artifacts section on the run page:
+            - test-reports (JUnit XML + Mochawesome HTML)
             - allure-report
-          attachments: reports.zip
+            - cypress-videos
 
       - name: Send FAILURE email
         if: ${{ always() && steps.cypress.outcome == 'failure' }}
@@ -271,9 +260,9 @@ jobs:
           password: ${{ secrets.SMTP_PASSWORD }}
           to: nwosuchinonso.chinedu@gmail.com, email4automatedtesting@gmail.com
           from: GitHub Actions <${{ secrets.SMTP_USERNAME }}>
-          subject: "❌ Cypress FAILED | ${{ github.repository }} | ${{ github.ref_name }}"
+          subject: "Cypress FAILED | ${{ github.repository }} | ${{ github.ref_name }}"
           body: |
-            ❌ Cypress E2E Tests FAILED
+            Cypress E2E Tests FAILED
 
             Summary:
             ${{ env.TEST_SUMMARY }}
@@ -282,18 +271,14 @@ jobs:
             Branch:  ${{ github.ref_name }}
             Trigger: ${{ github.event_name }}
 
-            Attached:
-            - reports.zip (JUnit XML + Mochawesome HTML)
-
             Run link:
             ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
-            Artifacts available in the run page:
-            - test-reports
+            Download reports from the Artifacts section on the run page:
+            - test-reports (JUnit XML + Mochawesome HTML)
             - allure-report
             - cypress-screenshots
             - cypress-videos
-          attachments: reports.zip
 
       # ===============================
       # SLACK / TEAMS (INACTIVE FOR NOW)
