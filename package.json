@@ -15,7 +15,8 @@
   "type": "commonjs",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "npx cypress run",
+    "test2": "npm run generate:allure && npm run open:allure",
     "headed": "echo \"npx cypress run --headed",
     "headless": "npx cypress run --headless",
     "open": "npx cypress open",
@@ -196,6 +197,12 @@
   "devDependencies": {
     "allure-commandline": "^2.36.0",
     "allure-cypress": "^2.15.1",
-    "cypress": "^15.9.0"
+    "cypress": "^15.9.0",
+    "cypress-multi-reporters": "^2.0.5",
+    "fast-xml-parser": "^5.3.3",
+    "mocha-junit-reporter": "^2.2.1",
+    "mochawesome": "^7.1.4",
+    "mochawesome-merge": "^5.1.0",
+    "mochawesome-report-generator": "^6.3.2"
   }
 }

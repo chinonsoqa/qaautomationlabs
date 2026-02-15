@@ -15,7 +15,7 @@
 
 // Import commands.js using ES2015 syntax:
 import './commands'
-import "allure-cypress";
+import "allure-cypress/commands";
 
 //Suppress uncaught exceptions in Cypress
 //If this error is not critical to your test (e.g., you're not testing the carousel), you can tell Cypress to ignore it:

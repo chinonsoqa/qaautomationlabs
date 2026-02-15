@@ -1,0 +1,346 @@
+name: end-to-end tests
+
+on:
+  push:
+    branches:
+      - github-actions
+
+  schedule:
+    # Runs every 5 hours
+    - cron: "0 */5 * * *"
+
+  # Allow manual runs from Actions tab
+  workflow_dispatch:
+
+concurrency:
+  # Prevent overlapping runs on same workflow/branch
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  end-to-end-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    env:
+      CI: "true"
+      CYPRESS_defaultCommandTimeout: "10000"
+      CYPRESS_pageLoadTimeout: "60000"
+      CYPRESS_requestTimeout: "15000"
+      CYPRESS_responseTimeout: "30000"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      # Cache the Cypress binary separately from npm packages
+      - name: Cache Cypress binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/Cypress
+          key: cypress-binary-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            cypress-binary-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify Cypress binary
+        run: npx cypress verify
+
+      - name: Create output folders
+        run: |
+          mkdir -p reports/junit
+          mkdir -p reports/mochawesome
+          mkdir -p allure-results
+          mkdir -p cypress/screenshots
+          mkdir -p cypress/videos
+
+      # -------------------------------
+      # Multi-reporter config
+      # -------------------------------
+      - name: Create reporter config (JUnit + Mochawesome JSON)
+        run: |
+          cat > reporter-config.json <<'EOF'
+          {
+            "reporterEnabled": "mocha-junit-reporter, mochawesome",
+            "mochaJunitReporterReporterOptions": {
+              "mochaFile": "reports/junit/junit-[hash].xml",
+              "toConsole": true
+            },
+            "mochawesomeReporterOptions": {
+              "reportDir": "reports/mochawesome",
+              "overwrite": false,
+              "html": false,
+              "json": true,
+              "quiet": true
+            }
+          }
+          EOF
+
+      # -------------------------------
+      # Run Cypress once
+      # -------------------------------
+      - name: Run Cypress tests
+        id: cypress
+        uses: cypress-io/github-action@v6
+        with:
+          install: false
+          command: >
+            npx cypress run
+            --reporter cypress-multi-reporters
+            --reporter-options configFile=reporter-config.json
+
+      # -------------------------------
+      # Generate reports (always run even if tests fail)
+      # -------------------------------
+      - name: Generate Mochawesome HTML report
+        if: always()
+        run: |
+          if ls reports/mochawesome/*.json 1> /dev/null 2>&1; then
+            echo "Mochawesome JSON found. Generating HTML report..."
+            npx mochawesome-merge reports/mochawesome/*.json > reports/mochawesome/merged.json
+            npx marge reports/mochawesome/merged.json \
+              --reportDir reports/mochawesome \
+              --reportFilename mochawesome.html
+          else
+            echo "No Mochawesome JSON files found. Skipping HTML report generation."
+          fi
+
+      - name: Setup Java for Allure
+        if: always()
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install Allure CLI
+        if: always()
+        run: npm install -g allure-commandline
+
+      - name: Fetch Allure history from gh-pages
+        if: always()
+        run: |
+          git fetch origin gh-pages --depth=1 || true
+          if git rev-parse --verify origin/gh-pages > /dev/null 2>&1; then
+            git checkout origin/gh-pages -- history/ 2>/dev/null && mv history allure-results/history || echo "No previous history found."
+          else
+            echo "gh-pages branch does not exist yet. Skipping history fetch."
+          fi
+
+      - name: Generate Allure report
+        if: always()
+        run: |
+          if ls allure-results/*.json 1> /dev/null 2>&1; then
+            echo "Allure results found. Generating report..."
+            allure generate allure-results --clean -o allure-report
+          else
+            echo "No Allure results found. Skipping report generation."
+          fi
+
+      - name: Build JUnit test summary
+        if: always()
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const { XMLParser } = require('fast-xml-parser');
+
+          const junitDir = path.join(process.cwd(), 'reports', 'junit');
+          const files = fs.existsSync(junitDir)
+            ? fs.readdirSync(junitDir).filter(f => f.endsWith('.xml'))
+            : [];
+
+          let total = 0, failures = 0, errors = 0, skipped = 0, time = 0;
+          const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "" });
+          const num = (v) => Number.isFinite(Number(v)) ? Number(v) : 0;
+
+          for (const f of files) {
+            const xml = fs.readFileSync(path.join(junitDir, f), 'utf8');
+            const data = parser.parse(xml);
+
+            const suites = [];
+            if (data.testsuite) suites.push(data.testsuite);
+            if (data.testsuites?.testsuite) {
+              const ts = data.testsuites.testsuite;
+              Array.isArray(ts) ? suites.push(...ts) : suites.push(ts);
+            }
+
+            for (const s of suites) {
+              total    += num(s.tests);
+              failures += num(s.failures);
+              errors   += num(s.errors);
+              skipped  += num(s.skipped);
+              time     += num(s.time);
+            }
+          }
+
+          const failed = failures + errors;
+          const passed = Math.max(0, total - failed - skipped);
+
+          const summary = files.length
+            ? `Total: ${total} | Passed: ${passed} | Failed: ${failed} (Failures: ${failures}, Errors: ${errors}) | Skipped: ${skipped} | Duration: ${time.toFixed(2)}s`
+            : `No JUnit XML found (run may have been cancelled or reporter not produced).`;
+
+          fs.appendFileSync(process.env.GITHUB_ENV, [
+            `TEST_TOTAL=${total}`,
+            `TEST_PASSED=${passed}`,
+            `TEST_FAILED=${failed}`,
+            `TEST_SKIPPED=${skipped}`,
+            `TEST_DURATION=${time.toFixed(2)}`,
+            `TEST_SUMMARY=${summary}`
+          ].join('\n') + '\n');
+
+          console.log(summary);
+          NODE
+
+      # -------------------------------
+      # Upload artifacts
+      # -------------------------------
+      - name: Upload Test Reports (JUnit + Mochawesome)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: reports
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Upload Allure Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-report
+          path: allure-report
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Upload Cypress screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-screenshots
+          path: cypress/screenshots
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Upload Cypress videos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-videos
+          path: cypress/videos
+          retention-days: 14
+          if-no-files-found: ignore
+
+      # ===============================
+      # DEPLOY ALLURE REPORT TO GITHUB PAGES
+      # ===============================
+      - name: Deploy Allure report to GitHub Pages
+        if: always()
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: allure-report
+          publish_branch: gh-pages
+          keep_files: false
+
+      # ===============================
+      # EMAIL NOTIFICATIONS
+      # ===============================
+      - name: Send SUCCESS email
+        if: ${{ always() && steps.cypress.outcome == 'success' }}
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.SMTP_SERVER }}
+          server_port: ${{ secrets.SMTP_PORT }}
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          to: nwosuchinonso.chinedu@gmail.com, email4automatedtesting@gmail.com
+          from: GitHub Actions <${{ secrets.SMTP_USERNAME }}>
+          subject: "Cypress PASSED | ${{ github.repository }} | ${{ github.ref_name }}"
+          body: |
+            Cypress E2E Tests PASSED
+
+            Summary:
+            ${{ env.TEST_SUMMARY }}
+
+            Repo:    ${{ github.repository }}
+            Branch:  ${{ github.ref_name }}
+            Trigger: ${{ github.event_name }}
+
+            Run link:
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            Allure Report:
+            https://chinonsoqa.github.io/qaautomationlabs/
+
+            Download reports from the Artifacts section on the run page:
+            - test-reports (JUnit XML + Mochawesome HTML)
+            - allure-report
+            - cypress-videos
+
+      - name: Send FAILURE email
+        if: ${{ always() && steps.cypress.outcome == 'failure' }}
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.SMTP_SERVER }}
+          server_port: ${{ secrets.SMTP_PORT }}
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          to: nwosuchinonso.chinedu@gmail.com, email4automatedtesting@gmail.com
+          from: GitHub Actions <${{ secrets.SMTP_USERNAME }}>
+          subject: "Cypress FAILED | ${{ github.repository }} | ${{ github.ref_name }}"
+          body: |
+            Cypress E2E Tests FAILED
+
+            Summary:
+            ${{ env.TEST_SUMMARY }}
+
+            Repo:    ${{ github.repository }}
+            Branch:  ${{ github.ref_name }}
+            Trigger: ${{ github.event_name }}
+
+            Run link:
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            Allure Report:
+            https://chinonsoqa.github.io/qaautomationlabs/
+
+            Download reports from the Artifacts section on the run page:
+            - test-reports (JUnit XML + Mochawesome HTML)
+            - allure-report
+            - cypress-screenshots
+            - cypress-videos
+
+      # ===============================
+      # SLACK / TEAMS (INACTIVE FOR NOW)
+      # Uncomment when ready and add SLACK_WEBHOOK_URL / TEAMS_WEBHOOK_URL secrets.
+      # ===============================
+
+      # - name: Slack alert (inactive)
+      #   if: always()
+      #   uses: slackapi/slack-github-action@v2.0.0
+      #   with:
+      #     webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+      #     webhook-type: incoming-webhook
+      #     payload: |
+      #       {
+      #         "text": "Cypress run *${{ job.status }}* for *${{ github.repository }}* on branch *${{ github.ref_name }}*.\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+      #       }
+
+      # - name: Teams alert (inactive)
+      #   if: always()
+      #   run: |
+      #     curl -H "Content-Type: application/json" -d '{
+      #       "text": "Cypress run \"${{ job.status }}\" for \"${{ github.repository }}\" on branch \"${{ github.ref_name }}\".\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+      #     }' "${{ secrets.TEAMS_WEBHOOK_URL }}"
