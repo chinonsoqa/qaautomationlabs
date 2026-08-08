@@ -37,9 +37,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "npm"
 
       # Cache the Cypress binary separately from npm packages
@@ -96,7 +96,7 @@ jobs:
         with:
           install: false
           command: >
-            npx cypress run
+            run
             --reporter cypress-multi-reporters
             --reporter-options configFile=reporter-config.json
 
@@ -118,7 +118,7 @@ jobs:
 
       - name: Setup Java for Allure
         if: always()
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 17
