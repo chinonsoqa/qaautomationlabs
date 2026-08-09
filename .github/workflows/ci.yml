@@ -148,6 +148,7 @@ jobs:
           fi
 
       - name: Build JUnit test summary
+        id: build_test_summary
         if: always()
         run: |
           node - <<'NODE'
@@ -191,17 +192,16 @@ jobs:
             ? `Total: ${total} | Passed: ${passed} | Failed: ${failed} (Failures: ${failures}, Errors: ${errors}) | Skipped: ${skipped} | Duration: ${time.toFixed(2)}s`
             : `No JUnit XML found (run may have been cancelled or reporter not produced).`;
 
-          fs.appendFileSync(process.env.GITHUB_ENV, [
-            `TEST_TOTAL=${total}`,
-            `TEST_PASSED=${passed}`,
-            `TEST_FAILED=${failed}`,
-            `TEST_SKIPPED=${skipped}`,
-            `TEST_DURATION=${time.toFixed(2)}`,
-            `TEST_SUMMARY=${summary}`
-          ].join('\n') + '\n');
-
           console.log(summary);
+          const outputPath = process.env.GITHUB_OUTPUT;
+          if (!outputPath) {
+            throw new Error('GITHUB_OUTPUT is not set');
+          }
+
+          const outputValue = `TEST_SUMMARY<<EOF\n${summary}\nEOF\n`;
+          require('fs').appendFileSync(outputPath, outputValue);
           NODE
+        shell: bash
 
       # -------------------------------
       # Upload artifacts
@@ -272,7 +272,7 @@ jobs:
             Cypress E2E Tests PASSED
 
             Summary:
-            ${{ env.TEST_SUMMARY }}
+            ${{ steps.build_test_summary.outputs.TEST_SUMMARY }}
 
             Repo:    ${{ github.repository }}
             Branch:  ${{ github.ref_name }}
@@ -304,7 +304,7 @@ jobs:
             Cypress E2E Tests FAILED
 
             Summary:
-            ${{ env.TEST_SUMMARY }}
+            ${{ steps.build_test_summary.outputs.TEST_SUMMARY }}
 
             Repo:    ${{ github.repository }}
             Branch:  ${{ github.ref_name }}
